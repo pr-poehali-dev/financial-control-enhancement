@@ -16,17 +16,21 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 function DealModal({
-  deal, onClose, onSave, managers,
+  deal, onClose, onSave, managers, counterparties, accounts,
 }: {
   deal?: Deal | null;
   onClose: () => void;
   onSave: (d: Omit<Deal, 'id'>) => void;
   managers: { id: string; name: string }[];
+  counterparties: { id: string; name: string }[];
+  accounts: { id: string; name: string; color: string }[];
 }) {
   const isEdit = !!deal;
   const [title, setTitle] = useState(deal?.title ?? '');
   const [client, setClient] = useState(deal?.client ?? '');
   const [managerId, setManagerId] = useState(deal?.managerId ?? managers[0]?.id ?? '');
+  const [counterpartyId, setCounterpartyId] = useState(deal?.counterpartyId ?? '');
+  const [accountId, setAccountId] = useState(deal?.accountId ?? '');
   const [revenue, setRevenue] = useState(deal?.revenue?.toString() ?? '');
   const [status, setStatus] = useState<Deal['status']>(deal?.status ?? 'active');
   const [date, setDate] = useState(deal?.date ?? new Date().toISOString().slice(0, 10));
@@ -47,7 +51,14 @@ function DealModal({
 
   function handleSave() {
     if (!title.trim() || !revenue) return;
-    onSave({ title, client, managerId, revenue: Number(revenue), expenses: expenses.filter(e => e.name.trim()), date, status });
+    onSave({
+      title, client, managerId,
+      counterpartyId: counterpartyId || undefined,
+      accountId: accountId || undefined,
+      revenue: Number(revenue),
+      expenses: expenses.filter(e => e.name.trim()),
+      date, status,
+    });
     onClose();
   }
 
@@ -74,7 +85,7 @@ function DealModal({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1.5">Клиент</label>
+              <label className="block text-xs font-medium text-muted-foreground mb-1.5">Клиент (текст)</label>
               <input
                 className="w-full px-3 py-2.5 bg-input border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary transition-colors"
                 placeholder="ООО Ромашка"
@@ -83,6 +94,20 @@ function DealModal({
               />
             </div>
             <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1.5">Контрагент</label>
+              <select
+                className="w-full px-3 py-2.5 bg-input border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
+                value={counterpartyId}
+                onChange={e => setCounterpartyId(e.target.value)}
+              >
+                <option value="">— Без контрагента</option>
+                {counterparties.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1.5">Менеджер</label>
               <select
                 className="w-full px-3 py-2.5 bg-input border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
@@ -90,6 +115,17 @@ function DealModal({
                 onChange={e => setManagerId(e.target.value)}
               >
                 {managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1.5">Счёт оплаты</label>
+              <select
+                className="w-full px-3 py-2.5 bg-input border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
+                value={accountId}
+                onChange={e => setAccountId(e.target.value)}
+              >
+                <option value="">— Без счёта</option>
+                {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
             </div>
           </div>
@@ -207,7 +243,7 @@ function DealModal({
 }
 
 export default function DealsPage() {
-  const { deals, managers, settings, addDeal, updateDeal, deleteDeal } = useFinanceStore();
+  const { deals, managers, counterparties, accounts, settings, addDeal, updateDeal, deleteDeal } = useFinanceStore();
   const [modalOpen, setModalOpen] = useState(false);
   const [editDeal, setEditDeal] = useState<Deal | null>(null);
   const [filter, setFilter] = useState<'all' | Deal['status']>('all');
@@ -327,6 +363,8 @@ export default function DealsPage() {
         <DealModal
           deal={editDeal}
           managers={managers}
+          counterparties={counterparties}
+          accounts={accounts}
           onClose={() => setModalOpen(false)}
           onSave={handleSave}
         />

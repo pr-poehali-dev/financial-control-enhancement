@@ -1,6 +1,53 @@
 import { useFinanceStore } from '@/store/FinanceContext';
 import Icon from '@/components/ui/icon';
 
+function AccountsWidget() {
+  const { accounts, summary } = useFinanceStore();
+  const totalBalance = Object.values(summary.accountBalances).reduce((s, v) => s + v, 0);
+
+  const ACC_ICONS: Record<string, string> = {
+    bank: 'Landmark', cash: 'Banknote', card: 'CreditCard', other: 'Wallet',
+  };
+
+  return (
+    <div className="glass-card border border-border rounded-2xl p-5">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Icon name="Wallet" size={16} className="text-primary" />
+          <span className="font-semibold text-sm text-foreground">Счета</span>
+        </div>
+        <span className="font-mono font-bold text-sm text-primary">{fmt(totalBalance)} ₽</span>
+      </div>
+      <div className="space-y-2.5">
+        {accounts.map(acc => {
+          const balance = summary.accountBalances[acc.id] ?? acc.initialBalance;
+          const pct = totalBalance > 0 ? (balance / totalBalance) * 100 : 0;
+          return (
+            <div key={acc.id}>
+              <div className="flex items-center justify-between text-xs mb-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Icon name={ACC_ICONS[acc.type] ?? 'Wallet'} size={12} style={{ color: acc.color }} />
+                  <span className="text-foreground font-medium">{acc.name}</span>
+                </div>
+                <span className="font-mono font-bold" style={{ color: acc.color }}>{fmt(balance)} ₽</span>
+              </div>
+              <div className="h-1 bg-secondary rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-700"
+                  style={{ width: `${Math.min(pct, 100)}%`, background: acc.color }}
+                />
+              </div>
+            </div>
+          );
+        })}
+        {accounts.length === 0 && (
+          <div className="text-center text-xs text-muted-foreground py-4">Нет счетов</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function fmt(n: number, currency = '₽') {
   return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(n) + ' ' + currency;
 }
@@ -175,6 +222,9 @@ export default function DashboardPage() {
         <DividendWidget />
         <SalaryWidget />
       </div>
+
+      {/* Accounts */}
+      <AccountsWidget />
 
       {/* Deals */}
       <RecentDeals />
