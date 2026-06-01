@@ -23,7 +23,7 @@ export type Account = {
   color: string;
 };
 
-export type CategoryType = 'income' | 'expense';
+export type CategoryType = 'income' | 'expense' | 'neutral';
 
 export type Category = {
   id: string;
@@ -52,7 +52,16 @@ export type Deal = {
   status: 'active' | 'closed' | 'pending';
 };
 
-export type TransactionType = 'income' | 'expense' | 'salary' | 'dividend' | 'tax';
+// 'transfer' — перевод между счетами (нейтральный, не влияет на доходы/расходы)
+// 'neutral' — займы, обеспечения и т.д. (нейтральные)
+export type TransactionType =
+  | 'income'
+  | 'expense'
+  | 'salary'
+  | 'dividend'
+  | 'tax'
+  | 'transfer'
+  | 'neutral';
 
 export type Transaction = {
   id: string;
@@ -63,6 +72,7 @@ export type Transaction = {
   recipientId?: string;
   counterpartyId?: string;
   accountId?: string;
+  toAccountId?: string; // только для transfer
   dealId?: string;
   date: string;
 };
@@ -102,6 +112,9 @@ const ACCOUNTS_DEFAULT: Account[] = [
   { id: 'acc3', name: 'Корпоративная карта', type: 'card', initialBalance: 120000, currency: '₽', color: '#a855f7' },
 ];
 
+// СИСТЕМНЫЕ категории: нельзя удалять
+export const SYSTEM_CATEGORY_IDS = ['cat4', 'cat5', 'cat6', 'cat8', 'cat9', 'cat10', 'cat11'];
+
 const CATEGORIES_DEFAULT: Category[] = [
   { id: 'cat1', name: 'Выручка', type: 'income', color: '#22c55e', icon: 'TrendingUp' },
   { id: 'cat2', name: 'Прочие доходы', type: 'income', color: '#3b82f6', icon: 'Plus' },
@@ -110,6 +123,11 @@ const CATEGORIES_DEFAULT: Category[] = [
   { id: 'cat5', name: 'Дивиденды', type: 'expense', color: '#a855f7', icon: 'Gem' },
   { id: 'cat6', name: 'Налог', type: 'expense', color: '#ef4444', icon: 'Landmark' },
   { id: 'cat7', name: 'Маркетинг', type: 'expense', color: '#eab308', icon: 'Megaphone' },
+  // Нейтральные — не входят в доходы/расходы
+  { id: 'cat8', name: 'Займ выданный', type: 'neutral', color: '#06b6d4', icon: 'HandCoins' },
+  { id: 'cat9', name: 'Возврат займа', type: 'neutral', color: '#06b6d4', icon: 'RotateCcw' },
+  { id: 'cat10', name: 'Обеспечение контракта', type: 'neutral', color: '#8b5cf6', icon: 'ShieldCheck' },
+  { id: 'cat11', name: 'Возврат обеспечения', type: 'neutral', color: '#8b5cf6', icon: 'ShieldOff' },
 ];
 
 const DEALS_DEFAULT: Deal[] = [
@@ -159,6 +177,7 @@ const TRANSACTIONS_DEFAULT: Transaction[] = [
   { id: 't5', type: 'salary', categoryId: 'cat4', amount: 35000, description: 'ЗП за сделку Ромашка', recipientId: 'm1', accountId: 'acc1', dealId: 'd1', date: '2026-05-18' },
   { id: 't6', type: 'salary', categoryId: 'cat4', amount: 40000, description: 'ЗП за сделку Стройтех', recipientId: 'm2', accountId: 'acc1', dealId: 'd2', date: '2026-05-25' },
   { id: 't7', type: 'dividend', categoryId: 'cat5', amount: 80000, description: 'Дивиденды май', accountId: 'acc1', date: '2026-05-31' },
+  { id: 't8', type: 'neutral', categoryId: 'cat10', amount: 150000, description: 'Обеспечение по контракту Стройтех', counterpartyId: 'cp2', accountId: 'acc1', date: '2026-05-20' },
 ];
 
 const SETTINGS_DEFAULT: Settings = {
@@ -173,6 +192,9 @@ const SETTINGS_DEFAULT: Settings = {
 export function generateId() {
   return Math.random().toString(36).slice(2, 10);
 }
+
+// Типы которые НЕ влияют на доходы/расходы
+export const NEUTRAL_TYPES: TransactionType[] = ['transfer', 'neutral'];
 
 // ─── Calculations ────────────────────────────────────────────────────────────
 
@@ -190,12 +212,33 @@ export function calcAccountBalances(accounts: Account[], transactions: Transacti
     balances[acc.id] = acc.initialBalance;
   }
   for (const t of transactions) {
+    // Перевод между счетами: списываем с fromAccount, зачисляем на toAccount
+    if (t.type === 'transfer') {
+      if (t.accountId) {
+        if (balances[t.accountId] === undefined) balances[t.accountId] = 0;
+        balances[t.accountId] -= t.amount;
+      }
+      if (t.toAccountId) {
+        if (balances[t.toAccountId] === undefined) balances[t.toAccountId] = 0;
+        balances[t.toAccountId] += t.amount;
+      }
+      continue;
+    }
+    // Нейтральные (займы, обеспечения) — влияют на баланс счёта, но не на P&L
+    if (t.type === 'neutral') {
+      if (t.accountId) {
+        if (balances[t.accountId] === undefined) balances[t.accountId] = 0;
+        // нейтральные по умолчанию списывают (выдача займа, перечисление обеспечения)
+        balances[t.accountId] -= t.amount;
+      }
+      continue;
+    }
     if (!t.accountId) continue;
-    const isIncome = t.type === 'income';
-    const isExpense = t.type === 'expense' || t.type === 'salary' || t.type === 'dividend' || t.type === 'tax';
     if (balances[t.accountId] === undefined) balances[t.accountId] = 0;
-    if (isIncome) balances[t.accountId] += t.amount;
-    else if (isExpense) balances[t.accountId] -= t.amount;
+    if (t.type === 'income') balances[t.accountId] += t.amount;
+    else if (t.type === 'expense' || t.type === 'salary' || t.type === 'dividend' || t.type === 'tax') {
+      balances[t.accountId] -= t.amount;
+    }
   }
   return balances;
 }
@@ -238,7 +281,9 @@ export function calcSummary(
   const totalSalariesPaid = Object.values(salariesByManager).reduce((s, v) => s + v.paid, 0);
   const totalSalariesRemaining = Object.values(salariesByManager).reduce((s, v) => s + v.remaining, 0);
 
+  // Баланс считается только по реальным доходам/расходам (не переводы/нейтральные)
   const balance = transactions.reduce((s, t) => {
+    if (NEUTRAL_TYPES.includes(t.type)) return s;
     if (t.type === 'income') return s + t.amount;
     if (['expense', 'salary', 'dividend', 'tax'].includes(t.type)) return s - t.amount;
     return s;
@@ -246,11 +291,30 @@ export function calcSummary(
 
   const accountBalances = calcAccountBalances(accounts, transactions);
 
+  // Обязательства: нейтральные транзакции с контрагентом (займы выданные, обеспечения)
+  const obligations: {
+    transactionId: string;
+    counterpartyId: string;
+    categoryId?: string;
+    amount: number;
+    description: string;
+    date: string;
+  }[] = transactions
+    .filter(t => (t.type === 'neutral') && t.counterpartyId)
+    .map(t => ({
+      transactionId: t.id,
+      counterpartyId: t.counterpartyId!,
+      categoryId: t.categoryId,
+      amount: t.amount,
+      description: t.description,
+      date: t.date,
+    }));
+
   return {
     totalRevenue, totalExpenses, totalMargin, netProfit, marginPercent,
     accruedDividends, paidDividends, remainingDividends,
     salariesByManager, totalSalariesAccrued, totalSalariesPaid, totalSalariesRemaining,
-    balance, dealCalcs: calcs, accountBalances,
+    balance, dealCalcs: calcs, accountBalances, obligations,
   };
 }
 
@@ -292,6 +356,9 @@ export function useFinance() {
   // Managers
   const addManager = useCallback((name: string) => {
     setManagers(prev => [...prev, { id: generateId(), name }]);
+  }, []);
+  const deleteManager = useCallback((id: string) => {
+    setManagers(prev => prev.filter(m => m.id !== id));
   }, []);
 
   // Counterparties
@@ -336,7 +403,7 @@ export function useFinance() {
     managers, counterparties, accounts, categories, deals, transactions, settings, summary,
     addDeal, updateDeal, deleteDeal,
     addTransaction, updateTransaction, deleteTransaction,
-    addManager,
+    addManager, deleteManager,
     addCounterparty, updateCounterparty, deleteCounterparty,
     addAccount, updateAccount, deleteAccount,
     addCategory, updateCategory, deleteCategory,

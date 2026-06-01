@@ -1,18 +1,20 @@
 import { useState } from 'react';
 import { useFinanceStore } from '@/store/FinanceContext';
-import { Transaction } from '@/store/useFinance';
+import { Transaction, NEUTRAL_TYPES } from '@/store/useFinance';
 import Icon from '@/components/ui/icon';
 
 function fmt(n: number) {
   return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(n);
 }
 
-const TX_TYPES: { value: Transaction['type']; label: string; color: string; icon: string; catDefault?: string }[] = [
-  { value: 'income', label: 'Поступление', color: '#22c55e', icon: 'ArrowDownLeft' },
-  { value: 'expense', label: 'Расход', color: '#f97316', icon: 'ArrowUpRight' },
-  { value: 'salary', label: 'Зарплата', color: '#3b82f6', icon: 'User', catDefault: 'cat4' },
-  { value: 'dividend', label: 'Дивиденды', color: '#a855f7', icon: 'Gem', catDefault: 'cat5' },
-  { value: 'tax', label: 'Налог', color: '#ef4444', icon: 'Landmark', catDefault: 'cat6' },
+const TX_TYPES: { value: Transaction['type']; label: string; color: string; icon: string; catDefault?: string; neutral?: boolean }[] = [
+  { value: 'income',   label: 'Поступление', color: '#22c55e', icon: 'ArrowDownLeft' },
+  { value: 'expense',  label: 'Расход',       color: '#f97316', icon: 'ArrowUpRight' },
+  { value: 'salary',   label: 'Зарплата',     color: '#3b82f6', icon: 'User',            catDefault: 'cat4' },
+  { value: 'dividend', label: 'Дивиденды',    color: '#a855f7', icon: 'Gem',             catDefault: 'cat5' },
+  { value: 'tax',      label: 'Налог',        color: '#ef4444', icon: 'Landmark',        catDefault: 'cat6' },
+  { value: 'transfer', label: 'Перевод',      color: '#06b6d4', icon: 'ArrowRightLeft',  neutral: true },
+  { value: 'neutral',  label: 'Нейтральная',  color: '#8b5cf6', icon: 'ShieldCheck',     neutral: true },
 ];
 
 function TxModal({
@@ -33,16 +35,21 @@ function TxModal({
   const [recipientId, setRecipientId] = useState(tx?.recipientId ?? managers[0]?.id ?? '');
   const [counterpartyId, setCounterpartyId] = useState(tx?.counterpartyId ?? '');
   const [accountId, setAccountId] = useState(tx?.accountId ?? accounts[0]?.id ?? '');
+  const [toAccountId, setToAccountId] = useState(tx?.toAccountId ?? '');
   const [categoryId, setCategoryId] = useState(tx?.categoryId ?? '');
   const [date, setDate] = useState(tx?.date ?? new Date().toISOString().slice(0, 10));
 
+  const isTransfer = type === 'transfer';
+  const isNeutral = type === 'neutral';
   const needsRecipient = type === 'salary';
-  const needsCounterparty = type === 'income' || type === 'expense';
-  const isExpenseType = type !== 'income';
+  const needsCounterparty = type === 'income' || type === 'expense' || isNeutral;
+  const isExpenseType = type !== 'income' && !isTransfer && !isNeutral;
 
-  const filteredCategories = categories.filter(c =>
-    type === 'income' ? c.type === 'income' : c.type === 'expense'
-  );
+  const filteredCategories = categories.filter(c => {
+    if (isNeutral) return c.type === 'neutral';
+    if (type === 'income') return c.type === 'income';
+    return c.type === 'expense';
+  });
 
   function handleTypeChange(t: Transaction['type']) {
     setType(t);
@@ -53,12 +60,17 @@ function TxModal({
 
   function handleSave() {
     if (!amount || !description.trim()) return;
+    if (isTransfer && !toAccountId) return;
     onSave({
-      type, amount: Number(amount), description, date,
+      type,
+      amount: Number(amount),
+      description,
+      date,
       categoryId: categoryId || undefined,
       recipientId: (needsRecipient || type === 'dividend') && recipientId ? recipientId : undefined,
       counterpartyId: counterpartyId || undefined,
       accountId: accountId || undefined,
+      toAccountId: isTransfer && toAccountId ? toAccountId : undefined,
     });
     onClose();
   }
@@ -76,9 +88,9 @@ function TxModal({
         <div className="p-5 space-y-4">
           {/* Type */}
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-2">Тип</label>
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
-              {TX_TYPES.map(t => (
+            <label className="block text-xs font-medium text-muted-foreground mb-2">Тип операции</label>
+            <div className="grid grid-cols-4 gap-2">
+              {TX_TYPES.slice(0, 5).map(t => (
                 <button
                   key={t.value}
                   onClick={() => handleTypeChange(t.value)}
@@ -86,6 +98,18 @@ function TxModal({
                 >
                   <Icon name={t.icon} size={14} style={{ color: type === t.value ? undefined : t.color }} />
                   <span className="text-center leading-tight">{t.label}</span>
+                </button>
+              ))}
+              {/* Neutral types span 2 cols each row */}
+              {TX_TYPES.slice(5).map(t => (
+                <button
+                  key={t.value}
+                  onClick={() => handleTypeChange(t.value)}
+                  className={`col-span-2 flex items-center justify-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium transition-all ${type === t.value ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-border/60'}`}
+                >
+                  <Icon name={t.icon} size={13} style={{ color: type === t.value ? undefined : t.color }} />
+                  {t.label}
+                  <span className="text-[9px] opacity-60 ml-1">не P&L</span>
                 </button>
               ))}
             </div>
@@ -97,9 +121,7 @@ function TxModal({
               <label className="block text-xs font-medium text-muted-foreground mb-1.5">Сумма (₽) *</label>
               <input
                 className="w-full px-3 py-2.5 bg-input border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary transition-colors font-mono"
-                placeholder="0"
-                type="number"
-                value={amount}
+                placeholder="0" type="number" value={amount}
                 onChange={e => setAmount(e.target.value)}
               />
             </div>
@@ -107,9 +129,7 @@ function TxModal({
               <label className="block text-xs font-medium text-muted-foreground mb-1.5">Дата</label>
               <input
                 className="w-full px-3 py-2.5 bg-input border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
-                type="date"
-                value={date}
-                onChange={e => setDate(e.target.value)}
+                type="date" value={date} onChange={e => setDate(e.target.value)}
               />
             </div>
           </div>
@@ -119,91 +139,104 @@ function TxModal({
             <label className="block text-xs font-medium text-muted-foreground mb-1.5">Описание *</label>
             <input
               className="w-full px-3 py-2.5 bg-input border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary transition-colors"
-              placeholder="Описание транзакции..."
-              value={description}
+              placeholder="Описание операции..." value={description}
               onChange={e => setDescription(e.target.value)}
             />
           </div>
 
-          {/* Category */}
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1.5">Категория</label>
-            <select
-              className="w-full px-3 py-2.5 bg-input border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
-              value={categoryId}
-              onChange={e => setCategoryId(e.target.value)}
-            >
-              <option value="">— Без категории</option>
-              {filteredCategories.map(c => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          </div>
+          {/* Transfer: from → to */}
+          {isTransfer ? (
+            <>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1.5">Списать со счёта *</label>
+                <select
+                  className="w-full px-3 py-2.5 bg-input border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
+                  value={accountId} onChange={e => setAccountId(e.target.value)}
+                >
+                  <option value="">— Выбрать счёт</option>
+                  {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1.5">Зачислить на счёт *</label>
+                <select
+                  className="w-full px-3 py-2.5 bg-input border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
+                  value={toAccountId} onChange={e => setToAccountId(e.target.value)}
+                >
+                  <option value="">— Выбрать счёт</option>
+                  {accounts.filter(a => a.id !== accountId).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Category */}
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1.5">Категория</label>
+                <select
+                  className="w-full px-3 py-2.5 bg-input border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
+                  value={categoryId} onChange={e => setCategoryId(e.target.value)}
+                >
+                  <option value="">— Без категории</option>
+                  {filteredCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
 
-          {/* Account */}
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-              {isExpenseType ? 'Списать со счёта' : 'Зачислить на счёт'}
-            </label>
-            <select
-              className="w-full px-3 py-2.5 bg-input border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
-              value={accountId}
-              onChange={e => setAccountId(e.target.value)}
-            >
-              <option value="">— Без счёта</option>
-              {accounts.map(a => (
-                <option key={a.id} value={a.id}>{a.name}</option>
-              ))}
-            </select>
-          </div>
+              {/* Account */}
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                  {isExpenseType || isNeutral ? 'Списать со счёта' : 'Зачислить на счёт'}
+                </label>
+                <select
+                  className="w-full px-3 py-2.5 bg-input border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
+                  value={accountId} onChange={e => setAccountId(e.target.value)}
+                >
+                  <option value="">— Без счёта</option>
+                  {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+              </div>
 
-          {/* Counterparty */}
-          {needsCounterparty && (
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-                {type === 'income' ? 'Оплачено контрагентом' : 'Оплачивается контрагенту'}
-              </label>
-              <select
-                className="w-full px-3 py-2.5 bg-input border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
-                value={counterpartyId}
-                onChange={e => setCounterpartyId(e.target.value)}
-              >
-                <option value="">— Без контрагента</option>
-                {counterparties.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
+              {needsCounterparty && (
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                    {type === 'income' ? 'Оплачено контрагентом' : isNeutral ? 'Контрагент' : 'Оплачивается контрагенту'}
+                  </label>
+                  <select
+                    className="w-full px-3 py-2.5 bg-input border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
+                    value={counterpartyId} onChange={e => setCounterpartyId(e.target.value)}
+                  >
+                    <option value="">— Без контрагента</option>
+                    {counterparties.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+              )}
 
-          {/* Recipient for salary */}
-          {needsRecipient && (
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1.5">Получатель (менеджер)</label>
-              <select
-                className="w-full px-3 py-2.5 bg-input border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
-                value={recipientId}
-                onChange={e => setRecipientId(e.target.value)}
-              >
-                <option value="">— Выбрать менеджера</option>
-                {managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-              </select>
-            </div>
-          )}
+              {needsRecipient && (
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1.5">Получатель (менеджер)</label>
+                  <select
+                    className="w-full px-3 py-2.5 bg-input border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
+                    value={recipientId} onChange={e => setRecipientId(e.target.value)}
+                  >
+                    <option value="">— Выбрать менеджера</option>
+                    {managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  </select>
+                </div>
+              )}
 
-          {/* Dividend recipient */}
-          {type === 'dividend' && (
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1.5">Получатель дивидендов</label>
-              <select
-                className="w-full px-3 py-2.5 bg-input border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
-                value={recipientId}
-                onChange={e => setRecipientId(e.target.value)}
-              >
-                <option value="">— Без получателя</option>
-                {managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-              </select>
-            </div>
+              {type === 'dividend' && (
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1.5">Получатель дивидендов</label>
+                  <select
+                    className="w-full px-3 py-2.5 bg-input border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
+                    value={recipientId} onChange={e => setRecipientId(e.target.value)}
+                  >
+                    <option value="">— Без получателя</option>
+                    {managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  </select>
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -235,14 +268,16 @@ export default function TransactionsPage() {
     else addTransaction(data);
   }
 
-  const totals = transactions.reduce(
-    (acc, t) => {
-      if (t.type === 'income') acc.income += t.amount;
-      else acc.out += t.amount;
-      return acc;
-    },
-    { income: 0, out: 0 }
-  );
+  const totals = transactions
+    .filter(t => !NEUTRAL_TYPES.includes(t.type))
+    .reduce(
+      (acc, t) => {
+        if (t.type === 'income') acc.income += t.amount;
+        else acc.out += t.amount;
+        return acc;
+      },
+      { income: 0, out: 0 }
+    );
 
   return (
     <div className="px-4 lg:px-6 py-6 space-y-5">
@@ -260,7 +295,7 @@ export default function TransactionsPage() {
         </button>
       </div>
 
-      {/* Summary */}
+      {/* Summary — только P&L */}
       <div className="grid grid-cols-3 gap-3">
         <div className="glass-card border border-border rounded-xl p-4 text-center">
           <div className="text-xs text-muted-foreground mb-1">Поступления</div>
@@ -271,8 +306,11 @@ export default function TransactionsPage() {
           <div className="font-mono font-bold text-sm text-orange-400">{fmt(totals.out)} ₽</div>
         </div>
         <div className="glass-card border border-border rounded-xl p-4 text-center">
-          <div className="text-xs text-muted-foreground mb-1">Баланс</div>
-          <div className={`font-mono font-bold text-sm ${totals.income - totals.out >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmt(totals.income - totals.out)} ₽</div>
+          <div className="text-xs text-muted-foreground mb-0.5">Баланс P&L</div>
+          <div className={`font-mono font-bold text-sm ${totals.income - totals.out >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            {fmt(totals.income - totals.out)} ₽
+          </div>
+          <div className="text-[9px] text-muted-foreground">без переводов и нейтр.</div>
         </div>
       </div>
 
@@ -305,7 +343,7 @@ export default function TransactionsPage() {
                 <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Описание</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Категория</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Счёт</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Контрагент / Получатель</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Контрагент / Кому</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Дата</th>
                 <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Сумма</th>
                 <th className="px-4 py-3"></th>
@@ -317,12 +355,15 @@ export default function TransactionsPage() {
                 const recipient = t.recipientId ? managers.find(m => m.id === t.recipientId) : null;
                 const cp = t.counterpartyId ? counterparties.find(c => c.id === t.counterpartyId) : null;
                 const acc = t.accountId ? accounts.find(a => a.id === t.accountId) : null;
+                const toAcc = t.toAccountId ? accounts.find(a => a.id === t.toAccountId) : null;
                 const cat = t.categoryId ? categories.find(c => c.id === t.categoryId) : null;
                 const isPositive = t.type === 'income';
+                const isNeutralTx = NEUTRAL_TYPES.includes(t.type);
+
                 return (
                   <tr
                     key={t.id}
-                    className="border-b border-border/50 last:border-0 hover:bg-secondary/20 transition-colors animate-fade-in group"
+                    className={`border-b border-border/50 last:border-0 hover:bg-secondary/20 transition-colors animate-fade-in group ${isNeutralTx ? 'opacity-80' : ''}`}
                     style={{ animationDelay: `${i * 30}ms` }}
                   >
                     <td className="px-4 py-3">
@@ -332,7 +373,10 @@ export default function TransactionsPage() {
                         </div>
                         <div>
                           <div className="text-xs font-medium text-foreground truncate max-w-[140px]">{t.description}</div>
-                          <div className="text-[10px]" style={{ color: tt.color }}>{tt.label}</div>
+                          <div className="flex items-center gap-1">
+                            <div className="text-[10px]" style={{ color: tt.color }}>{tt.label}</div>
+                            {isNeutralTx && <span className="text-[9px] text-muted-foreground/60 italic">не P&L</span>}
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -347,7 +391,13 @@ export default function TransactionsPage() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      {acc ? (
+                      {t.type === 'transfer' ? (
+                        <div className="flex items-center gap-1 text-xs">
+                          {acc && <span className="font-medium" style={{ color: acc.color }}>{acc.name}</span>}
+                          <Icon name="ArrowRight" size={10} className="text-muted-foreground/60 flex-shrink-0" />
+                          {toAcc && <span className="font-medium" style={{ color: toAcc.color }}>{toAcc.name}</span>}
+                        </div>
+                      ) : acc ? (
                         <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                           <div className="w-2 h-2 rounded-full" style={{ background: acc.color }} />
                           {acc.name}
@@ -361,9 +411,15 @@ export default function TransactionsPage() {
                     </td>
                     <td className="px-4 py-3 text-xs text-muted-foreground font-mono">{t.date}</td>
                     <td className="px-4 py-3 text-right">
-                      <span className={`font-mono font-bold text-sm ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-                        {isPositive ? '+' : '-'}{fmt(t.amount)} ₽
-                      </span>
+                      {isNeutralTx ? (
+                        <span className="font-mono font-bold text-sm" style={{ color: tt.color }}>
+                          {fmt(t.amount)} ₽
+                        </span>
+                      ) : (
+                        <span className={`font-mono font-bold text-sm ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+                          {isPositive ? '+' : '-'}{fmt(t.amount)} ₽
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

@@ -3,7 +3,7 @@ import { useFinanceStore } from '@/store/FinanceContext';
 import Icon from '@/components/ui/icon';
 
 export default function SettingsPage() {
-  const { settings, managers, updateSettings, addManager } = useFinanceStore();
+  const { settings, managers, updateSettings, addManager, deleteManager } = useFinanceStore();
   const [divPct, setDivPct] = useState(settings.dividendPercent.toString());
   const [comPct, setComPct] = useState(settings.managerCommissionPercent.toString());
   const [companyName, setCompanyName] = useState(settings.companyName);
@@ -125,12 +125,18 @@ export default function SettingsPage() {
         </div>
         <div className="space-y-2 mb-4">
           {managers.map(m => (
-            <div key={m.id} className="flex items-center gap-3 px-3 py-2.5 bg-secondary/50 rounded-lg border border-border">
+            <div key={m.id} className="flex items-center gap-3 px-3 py-2.5 bg-secondary/50 rounded-lg border border-border group">
               <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
                 <Icon name="User" size={11} className="text-primary" />
               </div>
               <span className="text-sm text-foreground flex-1">{m.name}</span>
-              <span className="text-[10px] text-muted-foreground font-mono">{m.id}</span>
+              <button
+                onClick={() => deleteManager(m.id)}
+                className="opacity-0 group-hover:opacity-100 p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-all"
+                title="Удалить менеджера"
+              >
+                <Icon name="Trash2" size={13} />
+              </button>
             </div>
           ))}
         </div>

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useFinanceStore } from '@/store/FinanceContext';
-import { Category, CategoryType } from '@/store/useFinance';
+import { Category, CategoryType, SYSTEM_CATEGORY_IDS } from '@/store/useFinance';
 import Icon from '@/components/ui/icon';
 
 const PRESET_COLORS = ['#22c55e', '#3b82f6', '#a855f7', '#f97316', '#eab308', '#ef4444', '#06b6d4', '#ec4899', '#6b7280', '#14b8a6'];
@@ -9,9 +9,8 @@ const PRESET_ICONS = [
   'TrendingUp', 'TrendingDown', 'Receipt', 'User', 'Users', 'Gem',
   'Landmark', 'Megaphone', 'ShoppingCart', 'Car', 'Home', 'Laptop',
   'Zap', 'Coffee', 'Package', 'Wrench', 'Globe', 'Star',
+  'HandCoins', 'RotateCcw', 'ShieldCheck', 'ShieldOff',
 ];
-
-const SYSTEM_IDS = ['cat4', 'cat5', 'cat6']; // зарплата, дивиденды, налог — системные
 
 function CategoryModal({
   cat, onClose, onSave,
@@ -23,6 +22,7 @@ function CategoryModal({
   const isEdit = !!cat;
   const [name, setName] = useState(cat?.name ?? '');
   const [type, setType] = useState<CategoryType>(cat?.type ?? 'expense');
+
   const [color, setColor] = useState(cat?.color ?? '#22c55e');
   const [icon, setIcon] = useState(cat?.icon ?? 'Receipt');
 
@@ -53,8 +53,12 @@ function CategoryModal({
           </div>
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-2">Тип</label>
-            <div className="grid grid-cols-2 gap-2">
-              {([['income', 'Доход', '#22c55e'], ['expense', 'Расход', '#ef4444']] as const).map(([val, label, col]) => (
+            <div className="grid grid-cols-3 gap-2">
+              {([
+                ['income', 'Доход', '#22c55e'],
+                ['expense', 'Расход', '#ef4444'],
+                ['neutral', 'Нейтральная', '#8b5cf6'],
+              ] as const).map(([val, label, col]) => (
                 <button
                   key={val}
                   onClick={() => setType(val)}
@@ -65,6 +69,11 @@ function CategoryModal({
                 </button>
               ))}
             </div>
+            {type === 'neutral' && (
+              <p className="text-[10px] text-muted-foreground mt-1.5 pl-1">
+                Нейтральные не влияют на P&L (займы, обеспечения контрактов)
+              </p>
+            )}
           </div>
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-2">Цвет</label>
@@ -101,8 +110,8 @@ function CategoryModal({
             </div>
             <div>
               <div className="text-sm font-medium text-foreground">{name || 'Название категории'}</div>
-              <div className="text-xs" style={{ color: type === 'income' ? '#22c55e' : '#ef4444' }}>
-                {type === 'income' ? 'Доход' : 'Расход'}
+              <div className="text-xs" style={{ color: type === 'income' ? '#22c55e' : type === 'neutral' ? '#8b5cf6' : '#ef4444' }}>
+                {type === 'income' ? 'Доход' : type === 'neutral' ? 'Нейтральная' : 'Расход'}
               </div>
             </div>
           </div>
@@ -127,6 +136,7 @@ export default function CategoriesPage() {
   const filtered = categories.filter(c => typeFilter === 'all' || c.type === typeFilter);
   const income = categories.filter(c => c.type === 'income');
   const expense = categories.filter(c => c.type === 'expense');
+  const neutral = categories.filter(c => c.type === 'neutral');
 
   function getCatUsage(id: string) {
     return transactions.filter(t => t.categoryId === id).length;
@@ -142,7 +152,7 @@ export default function CategoriesPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-xl font-bold text-foreground">Категории</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">{income.length} доходов · {expense.length} расходов</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{income.length} доходов · {expense.length} расходов · {neutral.length} нейтральных</p>
         </div>
         <button
           onClick={() => { setEditCat(null); setModalOpen(true); }}
@@ -154,8 +164,13 @@ export default function CategoriesPage() {
       </div>
 
       {/* Filter */}
-      <div className="flex gap-2">
-        {([['all', 'Все'], ['income', 'Доходы'], ['expense', 'Расходы']] as const).map(([val, label]) => (
+      <div className="flex gap-2 flex-wrap">
+        {([
+          ['all', 'Все'],
+          ['income', 'Доходы'],
+          ['expense', 'Расходы'],
+          ['neutral', 'Нейтральные'],
+        ] as const).map(([val, label]) => (
           <button
             key={val}
             onClick={() => setTypeFilter(val)}
@@ -171,7 +186,7 @@ export default function CategoriesPage() {
         <div className="divide-y divide-border/50">
           {filtered.map((cat, i) => {
             const usage = getCatUsage(cat.id);
-            const isSystem = SYSTEM_IDS.includes(cat.id);
+            const isSystem = SYSTEM_CATEGORY_IDS.includes(cat.id);
             return (
               <div
                 key={cat.id}
@@ -195,11 +210,11 @@ export default function CategoriesPage() {
                 <span
                   className="text-xs px-2.5 py-1 rounded-full font-medium flex-shrink-0"
                   style={{
-                    color: cat.type === 'income' ? '#22c55e' : '#ef4444',
-                    background: cat.type === 'income' ? '#22c55e18' : '#ef444418',
+                    color: cat.type === 'income' ? '#22c55e' : cat.type === 'neutral' ? '#8b5cf6' : '#ef4444',
+                    background: cat.type === 'income' ? '#22c55e18' : cat.type === 'neutral' ? '#8b5cf618' : '#ef444418',
                   }}
                 >
-                  {cat.type === 'income' ? 'Доход' : 'Расход'}
+                  {cat.type === 'income' ? 'Доход' : cat.type === 'neutral' ? 'Нейтральная' : 'Расход'}
                 </span>
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button onClick={() => { setEditCat(cat); setModalOpen(true); }} className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors">

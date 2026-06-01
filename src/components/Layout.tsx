@@ -7,6 +7,7 @@ export type Page =
   | 'deals'
   | 'transactions'
   | 'analytics'
+  | 'obligations'
   | 'counterparties'
   | 'accounts'
   | 'categories'
@@ -18,6 +19,7 @@ const NAV_ITEMS: { id: Page; label: string; icon: string; group?: string }[] = [
   { id: 'deals', label: 'Сделки', icon: 'Handshake' },
   { id: 'transactions', label: 'Транзакции', icon: 'ArrowLeftRight' },
   { id: 'analytics', label: 'Аналитика', icon: 'BarChart3' },
+  { id: 'obligations', label: 'Обязательства', icon: 'ShieldCheck' },
   { id: 'counterparties', label: 'Контрагенты', icon: 'Building2', group: 'Справочники' },
   { id: 'accounts', label: 'Счета', icon: 'Wallet', group: 'Справочники' },
   { id: 'categories', label: 'Категории', icon: 'Tag', group: 'Справочники' },
